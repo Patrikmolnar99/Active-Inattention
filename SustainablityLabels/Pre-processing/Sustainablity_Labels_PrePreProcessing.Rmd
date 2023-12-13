@@ -1,0 +1,79 @@
+---
+title: "Sustainability_Labels_PrePreProcessing"
+author: "Patrick, Josephine & Niels"
+date: "2023-12-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(tidyverse)
+```
+
+```{r}
+# Eye-tracking data
+jose <- read.csv("/Users/niels/Documents/Bachelor_s_coding/Data_Jose_ED.csv", sep=";")
+
+# Behavioral data
+jose_beh <- read.csv("/Users/niels/Documents/Bachelor_s_coding/Jose_CSV_Beh.csv")
+```
+
+# CLEANING UP EYE-TRACKING DATA
+```{r}
+#getting rid of the ID number 14
+jose <- jose %>% 
+  filter(RECORDING_SESSION_LABEL!=14)
+
+#renaming ID number 15 to 14
+jose <- jose %>% 
+  mutate(RECORDING_SESSION_LABEL = ifelse(RECORDING_SESSION_LABEL==15, 14, RECORDING_SESSION_LABEL))
+
+#getting rid of the ID number 37
+jose <- jose %>% 
+  filter(RECORDING_SESSION_LABEL!=37)
+
+# Getting rid of ID number 27, as the data is gone for that participant
+jose <- jose %>% 
+  filter(RECORDING_SESSION_LABEL != 27)
+
+#renaming trials number 15 to 14
+jose <- jose %>% 
+  mutate(RECORDING_SESSION_LABEL = ifelse(RECORDING_SESSION_LABEL==38, 37, RECORDING_SESSION_LABEL))
+
+```
+
+# CLEANING UP BEHAVIORAL DATA
+```{r}
+#getting rid of the trials number 14
+jose_beh <- jose_beh %>% 
+  filter(ID!=14)
+
+# getting rid of participant 27, as all the data is gone for them
+jose_beh <- jose_beh %>% 
+  filter(ID!=27)
+
+#renaming trials number 15 to 14
+jose_beh <- jose_beh %>% 
+  mutate(ID = ifelse(ID==15, 14, ID))
+
+#getting rid of the trials number 14
+jose_beh <- jose_beh %>% 
+  filter(ID!=37)
+
+#renaming trials number 15 to 14
+jose_beh <- jose_beh %>% 
+  mutate(ID = ifelse(ID==38, 37, ID))
+```
+
+```{r}
+# PARTICIPANT 27 DOES NOT CONTAIN ANY DATA. THAT IS WHY IT IS REMOVED.
+  group_by(RECORDING_SESSION_LABEL) %>% 
+  mutate(TRIAL_INDEX = TRIAL_INDEX - 1) %>% 
+  filter(TRIAL_INDEX != 0)
+```
+
+```{r}
+write_csv(jose_lag, "/Users/niels/Documents/Bachelor_s_coding/Data_Jose_ED_new.csv")
+write_csv(jose_beh, "/Users/niels/Documents/Bachelor_s_coding/Jose_CSV_Beh_new.csv")
+```
+
