@@ -1,0 +1,28 @@
+---
+title: "Nutrition_Labels_PrePreProcessing"
+author: "Patrick, Josephine & Niels"
+date: "2023-12-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+pacman::p_load(tidyverse)
+```
+
+```{r}
+# Eye-tracking data
+np <- read.csv("/Users/niels/Documents/Bachelor_s_coding/Data_np_edf.csv", sep=";")
+```
+
+```{r}
+np_lag <- np %>% 
+  group_by(RECORDING_SESSION_LABEL) %>% 
+  mutate(TRIAL_INDEX = TRIAL_INDEX - 1)%>% 
+  filter(TRIAL_INDEX != 0)
+```
+
+```{r}
+write_csv(np_lag, "/Users/niels/Documents/Bachelor_s_coding/Data_np_edf_new.csv")
+```
+
