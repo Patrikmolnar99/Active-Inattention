@@ -9,6 +9,69 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 pacman::p_load(tidyverse)
 ```
+```{r}
+# SETTING WORKING DIRECTORY - ONLY ONE THAT NEEDS TO BE CHANGE.
+## Change it to the location of bachelor_s_coding folder
+knitr::opts_knit$set(root.dir = '/Users/niels/Documents/Bachelor_s_coding/')
+setwd("/Users/niels/Documents/Bachelor_s_coding/")
+```
+
+# Loading and combining the behavioral data - Obsolete now
+```{r}
+#Pre-processing the NP behavioral data
+# Set the path to the directory containing your CSV files
+folder_path <- "csv_np"
+
+# List all CSV files in the directory
+all_files <- list.files(path = folder_path, pattern = "\\.csv$")
+
+#adjusting column types
+col_types <- cols(
+  Date = col_character(),
+  ID = col_character(),
+  Age = col_double(),
+  Gender = col_character(),
+  left_stim = col_double(),
+  right_stim = col_double(),
+  Stimulus = col_double(),
+  ReactionTime = col_double()
+)
+
+
+# Read all CSV files and bind them together
+data_list <- lapply(all_files, function(file) {
+  read_csv(paste0(folder_path, file), col_types = col_types)
+})
+
+
+combined_data <- bind_rows(data_list)
+
+# Write the combined dataframe to a new CSV file
+output_file <- "NP_CSV_Beh.csv"   # Update this path for your output location
+#write_csv(combined_data, output_file) #DO NOT RUN THIS, AS THE FOLDER DOES NOT CONTAIN THE NECESSARY CSV-FILES, SO IT RESULTS IN AN EMPTY CSV FILE
+```
+
+
+# Survey pre-processing
+```{r}
+##Survey
+# Set the path to the directory containing your CSV files
+folder_path <- "survey"
+
+# List all CSV files in the directory
+all_files <- list.files(path = folder_path, pattern = "\\.csv$")
+
+# Read all CSV files and bind them together
+data_list <- lapply(all_files, function(file) {
+  read_csv(paste0(folder_path,"/", file))
+})
+
+combined_data <- bind_rows(data_list)
+
+# Write the combined dataframe to a new CSV file
+output_file <- "final_survey.csv"   # Update this path for your output location
+write_csv(combined_data, output_file)
+```
 
 ```{r}
 # Eye-tracking data
