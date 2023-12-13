@@ -1,0 +1,374 @@
+---
+title: "Sustainability_Labels_PreProcessing"
+author: "Patrick, Josephine & Niels"
+date: "2023-12-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+pacman::p_load(
+  tidyverse, #for ggplot, dplyr etc
+  data.table, #for data.tables 
+  plotrix, #for std.error function
+  lme4, #for multilevel modelling
+  sjPlot, #for table output
+  emmeans, #for extracting estimated marginal means for planned contrasts
+)
+```
+
+```{r}
+# SETTING WORKING DIRECTORY - ONLY ONE THAT NEEDS TO BE CHANGE.
+## Change it to the location of bachelor_s_coding folder
+knitr::opts_knit$set(root.dir = '/Users/niels/Documents/Bachelor_s_coding/')
+setwd("/Users/niels/Documents/Bachelor_s_coding/")
+```
+
+# splitting the survey into two parts & computing survey variables
+```{r}
+Sur <- read_csv("final_survey.csv")
+# Split the data based on columns
+survey_J <- Sur[, c("ID", paste0("Q", 1:12))]
+
+#taking the average of survey questions
+survey_J <- survey_J %>% 
+  rowwise() %>%
+  mutate(avg_value = mean(c(Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9)))
+
+```
+
+## Adding variables to the Jose data set (left side)
+```{r}
+#Loading the behavioral data
+beh_J <- read.csv("Jose_CSV_Beh_new.csv")
+
+#Adjustments of general DataFrame - Left product
+lookup_df <- data.frame(
+  left_stim = c(1:30),
+  Product_L = c(rep("Pork", 10), rep("Chicken", 10), rep("Fish", 10)),
+  Label_L = c(rep("A", 4), rep("C", 2), rep("E", 4), 
+            rep("A", 4), rep("C", 2), rep("E", 4), 
+            rep("A", 4), rep("C", 2), rep("E", 4)),
+  Salience_L = c("High", "High", "Low", "Low", 
+               "High", "Low", 
+               "High", "High", "Low", "Low",
+               "High", "High", "Low", "Low", 
+               "High", "Low", 
+               "High", "High", "Low", "Low",
+               "High", "High", "Low", "Low", 
+               "High", "Low", 
+               "High", "High", "Low", "Low"),
+  Price_L = c(45, 50, 45, 50, 
+            40, 40, 
+            35, 30, 35, 30, 
+            45, 50, 45, 50, 
+            40, 40, 
+            35, 30, 35, 30, 
+            45, 50, 45, 50, 
+            40, 40, 
+            35, 30, 35, 30),
+  Price_level_L = c("low", "high", "low", "high", 
+                  "40", "40", 
+                  "low", "high", "low", "high",
+                  "low", "high", "low", "high", 
+                  "40", "40", 
+                  "low", "high", "low", "high",
+                  "low", "high", "low", "high", 
+                  "40", "40", 
+                  "low", "high", "low", "high")
+)
+
+# Now, merging this lookup_df with new_df
+new_df <- merge(beh_J, lookup_df, by = "left_stim", all = TRUE)
+
+# Assuming new_df has been initialized with your 1800 rows and the Nr column
+# Now, let's add columns to the new_df to store the mapped values
+beh_J$Product_L <- NA
+beh_J$Label_L <- NA
+beh_J$Salience_L <- NA
+beh_J$Price_L <- NA
+beh_J$Price_level_L <- NA
+
+# Iterate through each row in new_df
+for(i in 1:nrow(beh_J)){
+  
+  # Find the corresponding row in lookup_df
+  corresponding_row <- lookup_df[lookup_df$left_stim == beh_J$left_stim[i],]
+  
+  # Assign values to new_df
+  beh_J$Product_L[i] <- corresponding_row$Product_L
+  beh_J$Label_L[i] <- corresponding_row$Label_L
+  beh_J$Salience_L[i] <- corresponding_row$Salience_L
+  beh_J$Price_L[i] <- corresponding_row$Price_L
+  beh_J$Price_level_L[i] <- corresponding_row$Price_level_L
+}
+```
+
+## Adding variables to the Jose data set (right side)
+```{r}
+#Adjustments of general DataFrame - Right product
+lookup_df <- data.frame(
+  right_stim = c(1:30),
+  Product_R = c(rep("Pork", 10), rep("Chicken", 10), rep("Fish", 10)),
+  Label_R = c(rep("A", 4), rep("C", 2), rep("E", 4), 
+            rep("A", 4), rep("C", 2), rep("E", 4), 
+            rep("A", 4), rep("C", 2), rep("E", 4)),
+  Salience_R = c("High", "High", "Low", "Low", 
+               "High", "Low", 
+               "High", "High", "Low", "Low",
+               "High", "High", "Low", "Low", 
+               "High", "Low", 
+               "High", "High", "Low", "Low",
+               "High", "High", "Low", "Low", 
+               "High", "Low", 
+               "High", "High", "Low", "Low"),
+  Price_R = c(45, 50, 45, 50, 
+            40, 40, 
+            35, 30, 35, 30, 
+            45, 50, 45, 50, 
+            40, 40, 
+            35, 30, 35, 30, 
+            45, 50, 45, 50, 
+            40, 40, 
+            35, 30, 35, 30),
+  Price_level_R = c("low", "high", "low", "high", 
+                  "40", "40", 
+                  "low", "high", "low", "high",
+                  "low", "high", "low", "high", 
+                  "40", "40", 
+                  "low", "high", "low", "high",
+                  "low", "high", "low", "high", 
+                  "40", "40", 
+                  "low", "high", "low", "high")
+)
+
+# Now, merging this lookup_df with new_df
+new_df <- merge(beh_J, lookup_df, by = "right_stim", all = TRUE)
+
+# Assuming new_df has been initialized with your 1800 rows and the Nr column
+# Now, let's add columns to the new_df to store the mapped values
+beh_J$Product_R <- NA
+beh_J$Label_R <- NA
+beh_J$Salience_R <- NA
+beh_J$Price_R <- NA
+beh_J$Price_level_R <- NA
+
+# Iterate through each row in new_df
+for(i in 1:nrow(beh_J)){
+  
+  # Find the corresponding row in lookup_df
+  corresponding_row <- lookup_df[lookup_df$right_stim == beh_J$right_stim[i],]
+  
+  # Assign values to new_df
+  beh_J$Product_R[i] <- corresponding_row$Product_R
+  beh_J$Label_R[i] <- corresponding_row$Label_R
+  beh_J$Salience_R[i] <- corresponding_row$Salience_R
+  beh_J$Price_R[i] <- corresponding_row$Price_R
+  beh_J$Price_level_R[i] <- corresponding_row$Price_level_R
+}
+```
+
+## Adding variables to the Jose data set (chosen product)
+```{r}
+#Adjustments of general DataFrame - Chosen product
+
+# Creating a fixed lookup dataframe
+lookup_df <- data.frame(
+  Stimulus = c(1:30),
+  Product_C = c(rep("Pork", 10), rep("Chicken", 10), rep("Fish", 10)),
+  Label_C = c(rep("A", 4), rep("C", 2), rep("E", 4), 
+            rep("A", 4), rep("C", 2), rep("E", 4), 
+            rep("A", 4), rep("C", 2), rep("E", 4)),
+  Salience_C = c("High", "High", "Low", "Low", 
+               "High", "Low", 
+               "High", "High", "Low", "Low",
+               "High", "High", "Low", "Low", 
+               "High", "Low", 
+               "High", "High", "Low", "Low",
+               "High", "High", "Low", "Low", 
+               "High", "Low", 
+               "High", "High", "Low", "Low"),
+  Price_C = c(45, 50, 45, 50, 
+            40, 40, 
+            35, 30, 35, 30, 
+            45, 50, 45, 50, 
+            40, 40, 
+            35, 30, 35, 30, 
+            45, 50, 45, 50, 
+            40, 40, 
+            35, 30, 35, 30),
+  Price_level_C = c("low", "high", "low", "high", 
+                  "40", "40", 
+                  "low", "high", "low", "high",
+                  "low", "high", "low", "high", 
+                  "40", "40", 
+                  "low", "high", "low", "high",
+                  "low", "high", "low", "high", 
+                  "40", "40", 
+                  "low", "high", "low", "high")
+)
+
+# Now, merging this lookup_df with new_df
+new_df <- merge(beh_J, lookup_df, by = "Stimulus", all = TRUE)
+
+# Assuming new_df has been initialized with your 1800 rows and the Nr column
+# Now, let's add columns to the new_df to store the mapped values
+beh_J$Product_C <- NA
+beh_J$Label_C <- NA
+beh_J$Salience_C <- NA
+beh_J$Price_C <- NA
+beh_J$Price_level_C <- NA
+
+# Iterate through each row in new_df
+for(i in 1:nrow(beh_J)){
+  
+  # Find the corresponding row in lookup_df
+  corresponding_row <- lookup_df[lookup_df$Stimulus == beh_J$Stimulus[i],]
+  
+  # Assign values to new_df
+  beh_J$Product_C[i] <- corresponding_row$Product_C
+  beh_J$Label_C[i] <- corresponding_row$Label_C
+  beh_J$Salience_C[i] <- corresponding_row$Salience_C
+  beh_J$Price_C[i] <- corresponding_row$Price_C
+  beh_J$Price_level_C[i] <- corresponding_row$Price_level_C
+}
+```
+
+# general changes to the behavioral data
+```{r}
+# adding trial number in the behavioral data for Jose
+beh_J <- beh_J %>% 
+  group_by(ID) %>% 
+  mutate(trial = row_number()) %>% 
+  ungroup()
+
+# changes the trial so its next to the ID column
+beh_J <- beh_J %>% 
+  select(ID, trial, everything())
+
+beh_J <- beh_J %>% 
+  left_join(survey_J, by = "ID") %>% 
+  select(-c(Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8, Q9, Q10, Q11, Q12))
+```
+
+# Loading the eye-tracking data
+```{r}
+ED_J <-  read.csv("Data_Jose_ED_new.csv")
+```
+
+# Cleaning eye tracking data
+```{r}
+#Renaming the variables - J
+names(ED_J) <- tolower(names(ED_J))
+names(ED_J)[names(ED_J) == 'recording_session_label'] <- 'sessionid'
+names(ED_J)[names(ED_J) == 'trial_index'] <- 'trialnumber'
+names(ED_J)[names(ED_J) == 'current_fix_duration'] <- 'fix_dur'
+names(ED_J)[names(ED_J) == 'current_fix_index'] <- 'fix_index'
+names(ED_J)[names(ED_J) == 'current_fix_pupil'] <- 'pupil'
+names(ED_J)[names(ED_J) == 'current_fix_start'] <- 'fix_starttime'
+names(ED_J)[names(ED_J) == 'current_fix_x'] <- 'fix_x'
+names(ED_J)[names(ED_J) == 'current_fix_y'] <- 'fix_y'
+names(ED_J)[names(ED_J) == 'trial_start_time'] <- 'trial_starttime'
+
+
+#Fixation x and y coordinates and pupil size are saved as characters with decimals separated using a comma. Let's fix that!
+ED_J$fix_x <- as.numeric(gsub(",", ".", ED_J$fix_x))
+ED_J$fix_y <- as.numeric(gsub(",", ".", ED_J$fix_y))
+ED_J$pupil <- as.numeric(gsub(",", ".", ED_J$pupil))
+```
+
+## General changes to the EDF files
+```{r}
+#filtering out the trials containing products that the participant indicated they did not like (< 3 in survey score).
+
+#pork
+exclude_pork_ids <- survey_J %>%
+  filter(Q10 < 3) %>%
+  pull(ID)
+
+#chicken
+exclude_chicken_ids <- survey_J %>%
+  filter(Q11 < 3) %>%
+  pull(ID)
+
+#fish
+exclude_fish_ids <- survey_J %>%
+  filter(Q12 < 3) %>%
+  pull(ID)
+
+# Excluding trials for participants who rated Pork under 3
+beh_J <- beh_J %>%
+  filter(!(ID %in% exclude_pork_ids & (Product_L == "Pork" | Product_R == "Pork")))
+
+# Excluding trials for participants who rated Chicken under 3
+beh_J <- beh_J %>%
+  filter(!(ID %in% exclude_chicken_ids & (Product_L == "Chicken" | Product_R == "Chicken")))
+
+# Excluding trials for participants who rated Fish under 3
+beh_J <- beh_J %>%
+  filter(!(ID %in% exclude_fish_ids & (Product_L == "Fish" | Product_R == "Fish")))
+```
+
+# Plotting all trials (aggregated) for each participant
+```{r}
+# Grouping by sessionid (participant) and trialnumber.
+df_grouped <- ED_J %>%
+  group_by(sessionid, trialnumber) %>%
+  summarise(mean_fix_x = mean(fix_x, na.rm = TRUE), 
+            mean_fix_y = mean(fix_y, na.rm = TRUE))
+
+# Aggregating all trials for each participant, and plotting them
+ggplot(df_grouped, aes(x = mean_fix_x, y = mean_fix_y)) +
+  geom_point() + 
+  facet_wrap(~sessionid, nrow = 5) +  # Display 5 participants per row
+  labs(title = "Aggregated Fixation Points for Each Trial of Every Participant",
+       x = "Mean X Coordinate",
+       y = "Mean Y Coordinate") +
+  theme_minimal()
+```
+
+```{r}
+#Checking the plots of where people have looked at the screen
+plot(ED_J$fix_x,ED_J$fix_y)
+```
+
+# Defining the two AOIs on the screen
+```{r}
+# Defining the two AOIs
+ED_J$AOI <- case_when(
+  ED_J$fix_x > 215 & ED_J$fix_x < 267 & ED_J$fix_y > 509 & ED_J$fix_y < 582 ~ 1,
+  ED_J$fix_x > 1058 & ED_J$fix_x < 1107 & ED_J$fix_y > 509 & ED_J$fix_y < 582 ~ 2,
+)
+
+#remove data points outside of the four squares / AOIs
+ED_J$AOI[is.na(ED_J$AOI)] <- 0
+ED_J <- subset(ED_J, AOI != 0) 
+
+plot(ED_J$fix_x,ED_J$fix_y) #how does it look now?
+```
+
+# Computing the dwell time for each trial for each of the two AOIs, and the total dwell time per trial
+```{r}
+# computing the dwell time
+dwell_J <- ED_J %>%
+  group_by(sessionid, trialnumber) %>%
+  summarise(
+    AOI1_dwell_time = sum(ifelse(AOI == 1, fix_dur, 0), na.rm = TRUE),
+    AOI2_dwell_time = sum(ifelse(AOI == 2, fix_dur, 0), na.rm = TRUE),
+    total_dwell_time = sum(fix_dur, na.rm = TRUE)
+  ) %>%
+  ungroup() %>% 
+  rename(ID = sessionid, trial = trialnumber)
+
+# combining the dwell-time df with the behavioral df, so we only have one row per trial.
+beh_J1 <- beh_J %>% 
+  left_join(dwell_J, by = c("ID", "trial"))
+
+# For the J dataset, a lot of the trials do not have any fixations on the AOIs. Therefore, it results in NAs when the dwell data set is merged with the behavioral one. Here we replace the NAs with 0s:
+beh_J1[, c("AOI1_dwell_time", "AOI2_dwell_time", "total_dwell_time")] <- lapply(beh_J1[, c("AOI1_dwell_time", "AOI2_dwell_time", "total_dwell_time")], function(x) ifelse(is.na(x), 0, x))
+
+write.csv(beh_J1, "Jose_Final_Data.csv")
+```
