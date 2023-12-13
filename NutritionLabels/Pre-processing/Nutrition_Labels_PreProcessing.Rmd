@@ -1,0 +1,267 @@
+---
+title: "Nutrition_Labels_PreProcessing"
+author: "Patrick, Josephine & Niels"
+date: "2023-12-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+pacman::p_load(
+  tidyverse, #for ggplot, dplyr etc
+  data.table, #for data.tables 
+  plotrix, #for std.error function
+  lme4, #for multilevel modelling
+  sjPlot, #for table output
+  emmeans, #for extracting estimated marginal means for planned contrasts
+)
+```
+
+```{r}
+# SETTING WORKING DIRECTORY - ONLY ONE THAT NEEDS TO BE CHANGE.
+## Change it to the location of bachelor_s_coding folder
+knitr::opts_knit$set(root.dir = '/Users/niels/Documents/Bachelor_s_coding/')
+setwd("/Users/niels/Documents/Bachelor_s_coding/")
+```
+
+# splitting the survey into two parts & computing survey variables
+```{r}
+Sur <- read_csv("final_survey.csv")
+# Split the data based on columns
+survey_NP <- Sur[, c("ID", paste0("Q", 13:(ncol(Sur)-1)))]
+
+#taking the average of survey questions
+survey_NP <- survey_NP %>% 
+  rowwise() %>%
+  mutate(avg_value = mean(c(Q13, Q14, Q15, Q16, Q17, Q18, Q19)))
+```
+
+## Adding variables to the NP data set (left side)
+### First adding all the products and calories, and prices for the respective products
+```{r}
+products <- c("Chips", "Saftevand", "Leverpostej", "Peanuts", "Granola", "Cheddar Cheese", "Yoghurt", "Müsli Bar", "Italiensk Salad", "Gummy Mix", "Regular Milk", "Kakao", "White Bread", "Caramel Ice cream", "Chocolate spread", "Fried Chicken Wings", "Fried Fish Fillets", "Flødeboller", "Regular Pasta", "Pasta sauce", "Ice coffee", "Corn snacks", "Regular Butter", "Dried Banana chips", "Gifler", "Millionbøf", "Lemon soda", "Cheese Dip", "Rosiner", "Mayonaise", "Chips", "Saftevand", "Leverpostej", "Peanuts", "Müsli / Granola", "Cheddar Cheese", "Yoghurt", "Müsli Bar", "Italiensk Salad", "Gummy Mix", "Regular Milk", "Kakao", "White Bread", "Caramel Ice cream", "Chocolate spread", "Fried Chicken Wings", "Fried Fish Fillets", "Flødeboller", "Regular Pasta", "Pasta sauce", "Ice coffee", "Corn snacks", "Regular Butter", "Dried Banana chips", "Gifler", "Millionbøf", "Lemon soda", "Cheese Dip", "Rosiner", "Mayonaise", "Rice Cakes", "Tranebær saft", "Hummus", "Almonds", "Oats", "Cottage Cheese", "Skyr", "Protein müslibar", "Veggiepålæg", "Dried Fruit", "Oat Milk", "Protein Kakao", "Ryebread", "Plain vanilla icecream", "Peanut Butter", "Kyllingestrimler", "Salmon", "Unsweetened Dark Chocolate", "Brown rice", "Hakkede tomater", "Ice coffee sugar free", "Popcorn", "Vegan spread", "Edamame cup", "Carrot cake", "Færdigret", "Sportsdrink", "Salsa", "Saltstænger", "Ketchup")
+
+price <- c(10.5, 7.95, 13.95, 9.25, 32.95, 23.95, 14.95, 10, 12.95, 20, 11.25, 12.95, 14.95, 36.25, 26.95, 30, 27.95, 19.95, 9.95, 12, 12.95, 18.5, 11.7, 12, 16.95, 21.75, 14.5, 10.95, 8.5, 10, 10.5, 7.95, 13.95, 9.25, 32.95, 23.95, 14.95, 10, 12.95, 20, 11.25, 12.95, 14.95, 36.25, 26.95, 30, 27.95, 19.95, 9.95, 12, 12.95, 18.5, 11.7, 12, 16.95, 21.75, 14.5, 10.95, 8.5, 10, 6.5, 19.95, 23.95, 24.75, 9.25, 19.95, 22.95, 9.95, 15.95, 11.95, 14.5, 15.95, 8.95, 36.25, 33.95, 30, 49, 14.95, 12.95, 7.95, 29.95, 6.95, 15.95, 14.95, 28.95, 28, 9, 10.5, 6.5, 14.95)
+
+calories <- c(537, 146, 312, 620, 486, 418, 124, 497, 314, 350, 87, 149, 253, 436, 524, 286, 324, 399, 286, 156, 390, 428, 646, 513, 454, 247, 124, 167, 346, 598, 537, 146, 312, 620, 486, 418, 124, 497, 314, 350, 87, 149, 253, 436, 524, 286, 324, 399, 286, 156, 390, 428, 646, 513, 454, 247, 124, 167, 346, 598, 143, 66, 187, 314, 216, 78, 60, 287, 136, 231, 27, 51, 201, 232, 342, 121, 228, 318, 216, 25, 7, 186, 222, 137, 227, 153, 18, 60, 201, 105)
+```
+
+## Adding actual variables for the NP dataset
+```{r}
+# Loading the NP behavioral data
+beh_NP <- read_csv("NP_CSV_Beh.csv")
+
+# adding lookup dataframe containing the actual price, product name, calories, saliency and healthiness of the product
+lookup_np_r <- data.frame(
+  right_stim = 1:90, 
+  Product_R = products,
+  Price_R = price,
+  Calories_R = calories,
+  Healthy_R = c(rep(0, 60), rep(1, 30)),
+  Salient_R = c(rep(0, 30), rep(1, 30), rep(0, 30))
+)
+
+# Merging the 
+df_np <- merge(beh_NP, lookup_np_r, by = "right_stim", all = TRUE)
+
+# Assuming new_df has been initialized with your 1800 rows and the Nr column
+# Now, let's add columns to the new_df to store the mapped values
+beh_NP$Product_R <- NA
+beh_NP$Price_R <- NA
+beh_NP$Calories_R <- NA
+beh_NP$Healthy_R <- NA
+beh_NP$Salient_R <- NA
+
+# Iterate through each row in new_df
+for(i in 1:nrow(beh_NP)){
+  
+  # Find the corresponding row in lookup_df
+  corresponding_row <- lookup_np_r[lookup_np_r$right_stim == beh_NP$right_stim[i],]
+  
+  # Assign values to new_df
+  beh_NP$Product_R[i] <- corresponding_row$Product_R
+  beh_NP$Price_R[i] <- corresponding_row$Price_R
+  beh_NP$Calories_R[i] <- corresponding_row$Calories_R
+  beh_NP$Healthy_R[i] <- corresponding_row$Healthy_R
+  beh_NP$Salient_R[i] <- corresponding_row$Salient_R
+}
+```
+
+## Making it for the left stimuli
+```{r}
+# Creating the lookup dataframe for left stimuli
+lookup_np_l <- data.frame(
+  left_stim = 1:90, 
+  Product_L = products,
+  Price_L = price,
+  Calories_L = calories,
+  Healthy_L = c(rep(0, 60), rep(1, 30)),
+  Salient_L = c(rep(0, 30), rep(1, 30), rep(0, 30))
+)
+
+# Merging the behavioral data with the left lookup dataframe
+df_np <- merge(beh_NP, lookup_np_l, by = "left_stim", all = TRUE)
+
+# Assuming beh_NP has been initialized
+# Adding new columns for the left stimuli
+beh_NP$Product_L <- NA
+beh_NP$Price_L <- NA
+beh_NP$Calories_L <- NA
+beh_NP$Healthy_L <- NA
+beh_NP$Salient_L <- NA
+
+# Iterate through each row in beh_NP
+for(i in 1:nrow(beh_NP)){
+  
+  # Find the corresponding row in lookup_np_l
+  corresponding_row <- lookup_np_l[lookup_np_l$left_stim == beh_NP$left_stim[i],]
+  
+  # Assign values to beh_NP
+  beh_NP$Product_L[i] <- corresponding_row$Product_L
+  beh_NP$Price_L[i] <- corresponding_row$Price_L
+  beh_NP$Calories_L[i] <- corresponding_row$Calories_L
+  beh_NP$Healthy_L[i] <- corresponding_row$Healthy_L
+  beh_NP$Salient_L[i] <- corresponding_row$Salient_L
+}
+
+```
+
+## And for the chosen stimulus
+```{r}
+# Creating the lookup dataframe for chosen stimuli
+lookup_np_c <- data.frame(
+  Stimulus = 1:90, 
+  Product_C = products,
+  Price_C = price,
+  Calories_C = calories,
+  Healthy_C = c(rep(0, 60), rep(1, 30)),
+  Salient_C = c(rep(0, 30), rep(1, 30), rep(0, 30))
+)
+
+# Merging the behavioral data with the chosen lookup dataframe
+df_np <- merge(beh_NP, lookup_np_c, by = "Stimulus", all = TRUE)
+
+# Assuming beh_NP has been initialized
+# Adding new columns for the chosen stimuli
+beh_NP$Product_C <- NA
+beh_NP$Price_C <- NA
+beh_NP$Calories_C <- NA
+beh_NP$Healthy_C <- NA
+beh_NP$Salient_C <- NA
+
+# Iterate through each row in beh_NP
+for(i in 1:nrow(beh_NP)){
+  
+  # Find the corresponding row in lookup_np_c
+  corresponding_row <- lookup_np_c[lookup_np_c$Stimulus == beh_NP$Stimulus[i],]
+  
+  # Assign values to beh_NP
+  beh_NP$Product_C[i] <- corresponding_row$Product_C
+  beh_NP$Price_C[i] <- corresponding_row$Price_C
+  beh_NP$Calories_C[i] <- corresponding_row$Calories_C
+  beh_NP$Healthy_C[i] <- corresponding_row$Healthy_C
+  beh_NP$Salient_C[i] <- corresponding_row$Salient_C
+}
+
+```
+
+# general changes to the behavioral data
+```{r}
+# adding trial number in the behavioral data for NP
+beh_NP <- beh_NP %>% 
+  group_by(ID) %>% 
+  mutate(trial = row_number()) %>% 
+  ungroup()
+
+# changes the trial so its next to the ID column
+beh_NP <- beh_NP %>% 
+  select(ID, trial, everything())
+```
+
+# Loading the eye-tracking data
+```{r}
+ED_NP <- read.csv("Data_np_edf_new.csv")
+```
+
+# Cleaning eye tracking data
+```{r}
+#Renaming the variables - NP
+names(ED_NP) <- tolower(names(ED_NP))
+names(ED_NP)[names(ED_NP) == 'recording_session_label'] <- 'sessionid'
+names(ED_NP)[names(ED_NP) == 'trial_index'] <- 'trialnumber'
+names(ED_NP)[names(ED_NP) == 'current_fix_duration'] <- 'fix_dur'
+names(ED_NP)[names(ED_NP) == 'current_fix_index'] <- 'fix_index'
+names(ED_NP)[names(ED_NP) == 'current_fix_pupil'] <- 'pupil'
+names(ED_NP)[names(ED_NP) == 'current_fix_start'] <- 'fix_starttime'
+names(ED_NP)[names(ED_NP) == 'current_fix_x'] <- 'fix_x'
+names(ED_NP)[names(ED_NP) == 'current_fix_y'] <- 'fix_y'
+names(ED_NP)[names(ED_NP) == 'trial_start_time'] <- 'trial_starttime'
+
+#Fixation x and y coordinates and pupil size are saved as characters with decimals separated using a comma. Let's fix that!
+ED_NP$fix_x <- as.numeric(gsub(",", ".", ED_NP$fix_x))
+ED_NP$fix_y <- as.numeric(gsub(",", ".", ED_NP$fix_y))
+ED_NP$pupil <- as.numeric(gsub(",", ".", ED_NP$pupil))
+```
+
+
+## General changes to the EDF files
+```{r}
+## MERGING THE EYE-TRACKING DATA AND BEHAVIORAL DATA FOR NP
+merged_data_NP <- ED_NP %>%
+  left_join(beh_NP, by = c("sessionid" = "ID", "trialnumber" = "trial"))
+
+# ADDING THE SURVEY INFO ALSO
+merged_data_NP <- merged_data_NP %>% 
+  left_join(survey_NP, by = c("sessionid" = "ID"))
+
+# REMOVING THE QUESTIONS FROM THE MERGED DATA SET
+merged_data_NP <- merged_data_NP %>% 
+  select(-c(Q13, Q14, Q15, Q16, Q17, Q18, Q19))
+```
+
+```{r}
+#Checking the plots of where people have looked at the screen
+plot(ED_NP$fix_x,ED_NP$fix_y)
+```
+
+# Defining the two AOIs
+```{r}
+# Defining the two AOIs
+merged_data_NP$AOI <- case_when(
+  merged_data_NP$fix_x > 523 & merged_data_NP$fix_x < 703 & merged_data_NP$fix_y > 657 & merged_data_NP$fix_y < 767 ~ 1,
+  merged_data_NP$fix_x > 1361 & merged_data_NP$fix_x < 1543 & merged_data_NP$fix_y > 657 & merged_data_NP$fix_y < 767 ~ 2,
+)
+
+#remove data points outside of the four squares / AOIs
+merged_data_NP$AOI[is.na(merged_data_NP$AOI)] <- 0
+merged_data_NP <- subset(merged_data_NP, AOI != 0) 
+
+plot(merged_data_NP$fix_x,merged_data_NP$fix_y) #how does it look now?
+```
+
+# Computing the dwell time for each trial for each of the two AOIs, and the total dwell time per trial - FOR NP DF
+```{r}
+# computing the dwell time
+dwell_NP <- merged_data_NP %>%
+  group_by(sessionid, trialnumber) %>%
+  summarise(
+    AOI1_dwell_time = sum(ifelse(AOI == 1, fix_dur, 0), na.rm = TRUE),
+    AOI2_dwell_time = sum(ifelse(AOI == 2, fix_dur, 0), na.rm = TRUE),
+    total_dwell_time = sum(fix_dur, na.rm = TRUE)
+  ) %>%
+  ungroup() %>% 
+  rename(ID = sessionid, trial = trialnumber)
+
+# combining the dwell-time df with the behavioral df, so we only have one row per trial.
+beh_NP1 <- beh_NP %>% 
+  left_join(dwell_NP, by = c("ID", "trial"))
+
+
+# For the NP dataset, a lot of the trials do not have any fixations on the AOIs. Therefore, it results in NAs when the dwell data set is merged with the behavioral one. Here we replace the NAs with 0s:
+beh_NP1[, c("AOI1_dwell_time", "AOI2_dwell_time", "total_dwell_time")] <- lapply(beh_NP1[, c("AOI1_dwell_time", "AOI2_dwell_time", "total_dwell_time")], function(x) ifelse(is.na(x), 0, x))
+
+write.csv(beh_NP1, "Jose_Final_Data.csv")
+```
