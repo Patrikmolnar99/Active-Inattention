@@ -1,0 +1,301 @@
+---
+title: "Final_Bsc_Thesis_2023/24"
+author: "Patrik Molnar"
+date: '2023-12-23'
+output: html_document
+---
+
+# Setup Chunk for Knitr Options
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# Loading necessary libraries for analysis
+pacman::p_load(lme4, lmerTest, mgcv, tidyverse, jpeg, grid, DHARMa, MuMIn, effects, readxl, broom.mixed, ggplot2)
+```
+
+```{r}
+# Load datasets
+df_NP <- read.csv("/Users/patrikmolnar/Downloads/Final_data_NP.csv")
+Q_NP <- read.csv("/Users/patrikmolnar/Downloads/survey_NP.csv")
+
+# Data cleaning and preparation
+Q_NP <- Q_NP %>% filter(avg_value != "NA")
+df_NP <- df_NP %>% mutate(AOI1_dwell_time = ifelse(is.na(AOI1_dwell_time), 0, AOI1_dwell_time))
+
+```
+
+```{r}
+# Transforming data for analysis
+df_NP_new <- df_NP %>% 
+  select(ID, trial, AOI1_dwell_time, AOI2_dwell_time) %>%
+  gather(key = "aoi_key", value = "dwell_time", AOI1_dwell_time, AOI2_dwell_time) %>%
+  mutate(AOI = ifelse(aoi_key == "AOI1_dwell_time", 1, 2)) %>% 
+  select(-aoi_key) %>% arrange(ID, trial, AOI)
+
+df_NP_today <- df_NP %>%
+  left_join(df_NP_new, by = c("ID", "trial")) %>%
+  mutate(Price = ifelse(AOI == 1, Price_L, Price_R), 
+         Product = ifelse(AOI == 1, Product_L, Product_R),
+         Salience = ifelse(AOI == 1, Salient_L, Salient_R),
+         Calories = ifelse(AOI == 1, Calories_L, Calories_R),
+         Healthy = ifelse(AOI == 1, Healthy_L, Healthy_R),
+         Stimuli = ifelse(AOI == 1, left_stim, right_stim),
+         Chosen = ifelse(Product_R == Product_C, 0, 1)) %>%
+  select(ID, trial, Gender, AOI, dwell_time, Product, Salience, Calories, Price, Healthy, right_stim, left_stim, Stimulus, Stimuli, Chosen) %>%
+  select(-c(right_stim, left_stim, Stimulus))
+
+df_NP_today$Gender <- as.factor(df_NP_today$Gender)
+
+Q_NP <- Q_NP %>% mutate(Q_SUM = sum(Q13, Q14, Q15, Q16, Q17, Q18, Q19, na.rm = TRUE),
+                        Q_MEAN = Q_SUM / 7)
+
+df_NP_today <- df_NP_today %>% merge(Q_NP, by = "ID") %>%
+  mutate(cake = ifelse(ID <= 31, 0, 1), Fix_likelyhood = ifelse(dwell_time > 0, 1, 0))
+
+df_NP_today <- df_NP_today %>% filter(Healthy != 1)
+
+group_cake <- df_NP_today %>% filter(cake != 0)
+group_no_cake <- df_NP_today %>% filter(cake != 1)
+
+```
+
+```{r}
+# Visualizing interaction effects
+ggplot(df_NP_today, aes(x = as.factor(Salience), y = dwell_time, color = as.factor(cake))) +
+  stat_summary(fun = "mean", geom = "line") +
+  stat_summary(fun.data = "mean_se", geom = "errorbar", width = 0.2) +
+  labs(x = "Salience Level", y = "Average Dwell Time", color = "Cake Group") +
+  theme_minimal() +
+  ggtitle("Interaction of Salience and Cake Group on Dwell Time")
+
+# Distribution of Dwell Time by Salience Level
+ggplot(df_NP_today, aes(x = dwell_time, fill = as.factor(Salience))) +
+  geom_density(alpha = 0.6) +
+  labs(x = "Dwell Time", y = "Density", fill = "Salience Level") +
+  theme_minimal() +
+  ggtitle("Dwell Time Distribution by Salience Level")
+
+```
+
+```{r}
+# Conducting statistical tests and analyses
+# T-Test for Survey Scores Based on Cake/No Cake group
+t.test(avg_value ~ cake, data = df_NP_today)
+
+# Correlation Test
+cor.test(df_NP_today$cake, df_NP_today$avg_value)
+
+# Wilcoxon Test for Dwell Time by Gender
+wilcox.test(dwell_time ~ Gender, data = df_NP_today)
+
+# Wilcoxon Test for Dwell Times on AOIs
+wilcox.test(dwell_time ~ AOI, data = df_NP_today)
+
+```
+
+```{r}
+# Linear Mixed Models
+md_cake_lmm <- lmer(dwell_time ~ Salience + avg_value + (1 | ID), data = group_cake)
+md_no_cake_lmm <- lmer(dwell_time ~ Salience + avg_value  + (1 | ID), data = group_no_cake)
+
+# Summary of Linear Mixed Models
+summary(md_cake_lmm)
+summary(md_no_cake_lmm)
+
+# Calculate R-squared for the models
+rsq_cake_lmm <- r.squaredGLMM(md_cake_lmm)
+rsq_no_cake_lmm <- r.squaredGLMM(md_no_cake_lmm)
+
+# Print the R-squared values
+print(paste("R-squared for cake group model:", rsq_cake_lmm))
+print(paste("R-squared for no cake group model:", rsq_no_cake_lmm))
+```
+
+```{r}
+
+# Extracting model diagnostics
+cake_diag <- augment(md_cake_lmm)
+no_cake_diag <- augment(md_no_cake_lmm)
+
+# Function to create individual diagnostic plots
+plot_diagnostics <- function(model_diag, group_name, plot_type) {
+  if (plot_type == "resid_vs_fitted") {
+    return(ggplot(model_diag, aes(x = .fitted, y = .resid)) +
+             geom_point() +
+             geom_smooth(method = "loess") +
+             ggtitle(paste("Residuals vs Fitted -", group_name)))
+  } else if (plot_type == "qq") {
+    return(ggplot(model_diag, aes(sample = .resid)) +
+             stat_qq() +
+             stat_qq_line() +
+             ggtitle(paste("Normal Q-Q -", group_name)))
+  } else if (plot_type == "spread_level") {
+    return(ggplot(model_diag, aes(x = .fitted, y = sqrt(abs(.resid)))) +
+             geom_point() +
+             geom_smooth(method = "loess") +
+             ggtitle(paste("Spread-Level -", group_name)))
+  } else if (plot_type == "resid_vs_leverage") {
+    return(ggplot(model_diag, aes(x = .hat, y = .resid)) +
+             geom_point() +
+             geom_smooth(method = "loess") +
+             ggtitle(paste("Residuals vs Leverage -", group_name)))
+  } else {
+    stop("Invalid plot type")
+  }
+}
+
+# Creating and displaying plots for each diagnostic check
+# For Cake Group
+cake_resid_vs_fitted <- plot_diagnostics(cake_diag, "Cake Group", "resid_vs_fitted")
+cake_qq <- plot_diagnostics(cake_diag, "Cake Group", "qq")
+cake_spread_level <- plot_diagnostics(cake_diag, "Cake Group", "spread_level")
+cake_resid_vs_leverage <- plot_diagnostics(cake_diag, "Cake Group", "resid_vs_leverage")
+
+# For No Cake Group
+no_cake_resid_vs_fitted <- plot_diagnostics(no_cake_diag, "No Cake Group", "resid_vs_fitted")
+no_cake_qq <- plot_diagnostics(no_cake_diag, "No Cake Group", "qq")
+no_cake_spread_level <- plot_diagnostics(no_cake_diag, "No Cake Group", "spread_level")
+no_cake_resid_vs_leverage <- plot_diagnostics(no_cake_diag, "No Cake Group", "resid_vs_leverage")
+
+# Display plots individually
+cake_resid_vs_fitted
+cake_qq
+cake_spread_level
+cake_resid_vs_leverage
+
+no_cake_resid_vs_fitted
+no_cake_qq
+no_cake_spread_level
+no_cake_resid_vs_leverage
+```
+
+```{r}
+# Linear Mixed Models with Interaction Effects
+md_cake_lmm_interaction <- lmer(dwell_time ~ Salience * avg_value + (1 | ID), data = group_cake)
+md_no_cake_lmm_interaction <- lmer(dwell_time ~ Salience * avg_value + (1 | ID), data = group_no_cake)
+
+# Summary of Linear Mixed Models with Interaction Effects
+summary(md_cake_lmm_interaction)
+summary(md_no_cake_lmm_interaction)
+
+```
+
+```{r}
+
+# Extracting model diagnostics for models with interaction effects
+cake_diag_interaction <- augment(md_cake_lmm_interaction)
+no_cake_diag_interaction <- augment(md_no_cake_lmm_interaction)
+
+# Function to create individual diagnostic plots (same as previously defined)
+plot_diagnostics <- function(model_diag, group_name, plot_type) {
+  if (plot_type == "resid_vs_fitted") {
+    return(ggplot(model_diag, aes(x = .fitted, y = .resid)) +
+             geom_point() +
+             geom_smooth(method = "loess") +
+             ggtitle(paste("Residuals vs Fitted -", group_name)))
+  } else if (plot_type == "qq") {
+    return(ggplot(model_diag, aes(sample = .resid)) +
+             stat_qq() +
+             stat_qq_line() +
+             ggtitle(paste("Normal Q-Q -", group_name)))
+  } else if (plot_type == "spread_level") {
+    return(ggplot(model_diag, aes(x = .fitted, y = sqrt(abs(.resid)))) +
+             geom_point() +
+             geom_smooth(method = "loess") +
+             ggtitle(paste("Spread-Level -", group_name)))
+  } else if (plot_type == "resid_vs_leverage") {
+    return(ggplot(model_diag, aes(x = .hat, y = .resid)) +
+             geom_point() +
+             geom_smooth(method = "loess") +
+             ggtitle(paste("Residuals vs Leverage -", group_name)))
+  } else {
+    stop("Invalid plot type")
+  }
+}
+
+# Creating diagnostic plots for models with interaction effects
+# Cake Group with Interaction Effects
+cake_interaction_resid_vs_fitted <- plot_diagnostics(cake_diag_interaction, "Cake Group with Interaction", "resid_vs_fitted")
+cake_interaction_qq <- plot_diagnostics(cake_diag_interaction, "Cake Group with Interaction", "qq")
+cake_interaction_spread_level <- plot_diagnostics(cake_diag_interaction, "Cake Group with Interaction", "spread_level")
+cake_interaction_resid_vs_leverage <- plot_diagnostics(cake_diag_interaction, "Cake Group with Interaction", "resid_vs_leverage")
+
+# No Cake Group with Interaction Effects
+no_cake_interaction_resid_vs_fitted <- plot_diagnostics(no_cake_diag_interaction, "No Cake Group with Interaction", "resid_vs_fitted")
+no_cake_interaction_qq <- plot_diagnostics(no_cake_diag_interaction, "No Cake Group with Interaction", "qq")
+no_cake_interaction_spread_level <- plot_diagnostics(no_cake_diag_interaction, "No Cake Group with Interaction", "spread_level")
+no_cake_interaction_resid_vs_leverage <- plot_diagnostics(no_cake_diag_interaction, "No Cake Group with Interaction", "resid_vs_leverage")
+
+# Display plots individually
+cake_interaction_resid_vs_fitted
+cake_interaction_qq
+cake_interaction_spread_level
+cake_interaction_resid_vs_leverage
+
+no_cake_interaction_resid_vs_fitted
+no_cake_interaction_qq
+no_cake_interaction_spread_level
+no_cake_interaction_resid_vs_leverage
+```
+
+
+```{r}
+# Zero-Inflated Gamma Models without Interaction Effects
+md_cake_zigamma_no_interaction <- glmmTMB(dwell_time ~ Salience + avg_value + (1 | ID), data = group_cake, ziformula = ~ 1, family = ziGamma(link = "log"))
+md_no_cake_zigamma_no_interaction <- glmmTMB(dwell_time ~ Salience + avg_value + (1 | ID), data = group_no_cake, ziformula = ~ 1, family = ziGamma(link = "log"))
+
+# Summary of Zero-Inflated Gamma Models without Interaction Effects
+summary(md_cake_zigamma_no_interaction)
+summary(md_no_cake_zigamma_no_interaction)
+
+```
+
+```{r}
+# Zero-Inflated Gamma Models without Interaction Effects Plots
+# Cake Group
+DHARMa::simulateResiduals(fittedModel = md_cake_zigamma_no_interaction, n = 50) %>% plot()
+summary(md_cake_zigamma_no_interaction)
+
+# No Cake Group
+DHARMa::simulateResiduals(fittedModel = md_no_cake_zigamma_no_interaction, n = 50) %>% plot()
+summary(md_no_cake_zigamma_no_interaction)
+
+```
+
+```{r}
+# Zero-Inflated Gamma Models
+md_cake_zigamma <- glmmTMB(dwell_time ~ Salience * avg_value + (1 | ID), data = group_cake, ziformula = ~ 1, family = ziGamma(link = "log"))
+md_no_cake_zigamma <- glmmTMB(dwell_time ~ Salience * avg_value + (1 | ID), data = group_no_cake, ziformula = ~ 1, family = ziGamma(link = "log"))
+
+# Summary of Zero-Inflated Gamma Models
+summary(md_cake_zigamma)
+summary(md_no_cake_zigamma)
+
+```
+
+```{r}
+# Zero-Inflated Gamma Models Plots
+# Cake Group
+DHARMa::simulateResiduals(fittedModel = md_cake_zigamma, n = 500) %>% plot()
+summary(md_cake_zigamma)
+
+# No Cake Group
+DHARMa::simulateResiduals(fittedModel = md_no_cake_zigamma, n = 500) %>% plot()
+summary(md_no_cake_zigamma)
+```
+
+```{r}
+#Inspection of the approach using Fixation Likelyhood
+
+# Logistic GLMM for Fixation Likelihood
+md_cake_glmm <- glmer(Fix_likelyhood ~ Salience + avg_value + (1 | ID), data = group_cake, family = binomial)
+md_no_cake_glmm <- glmer(Fix_likelyhood ~ Salience + avg_value + (1 | ID), data = group_no_cake, family = binomial)
+
+# Summary of Binomial GLMMs
+summary(md_cake_glmm)
+summary(md_no_cake_glmm)
+
+```
+
